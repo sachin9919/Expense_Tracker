@@ -1,6 +1,15 @@
+import path from 'path';
+import fs from 'fs';
 import Database from 'better-sqlite3';
 
 const DB_PATH = process.env.DATABASE_PATH || './expenses.db';
+
+// Ensure directory exists
+const dbDir = path.dirname(DB_PATH);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
 const db = new Database(DB_PATH);
 
 // Initialize schema
