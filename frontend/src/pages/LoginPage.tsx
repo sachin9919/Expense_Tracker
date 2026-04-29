@@ -56,7 +56,7 @@ export const LoginPage: React.FC = () => {
                   type="email" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="glass-input pl-10"
+                  className="glass-input !pl-12"
                   placeholder="name@example.com"
                   required
                 />
@@ -71,7 +71,7 @@ export const LoginPage: React.FC = () => {
                   type="password" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="glass-input pl-10"
+                  className="glass-input !pl-12"
                   placeholder="••••••••"
                   required
                 />

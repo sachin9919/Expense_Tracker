@@ -90,7 +90,7 @@ export const AddExpenseForm: React.FC = () => {
                 step="0.01"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className={`glass-input pl-8 ${errors.amount ? 'border-danger/50 focus:border-danger focus:ring-danger/50' : ''}`}
+                className={`glass-input !pl-10 ${errors.amount ? 'border-danger/50 focus:border-danger focus:ring-danger/50' : ''}`}
                 placeholder="0.00"
               />
             </div>

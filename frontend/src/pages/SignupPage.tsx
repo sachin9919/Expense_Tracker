@@ -67,7 +67,7 @@ export const SignupPage: React.FC = () => {
                   type="email" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="glass-input pl-10"
+                  className="glass-input !pl-12"
                   placeholder="name@example.com"
                   required
                 />
@@ -82,7 +82,7 @@ export const SignupPage: React.FC = () => {
                   type="password" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="glass-input pl-10"
+                  className="glass-input !pl-12"
                   placeholder="At least 6 characters"
                   required
                 />
@@ -97,7 +97,7 @@ export const SignupPage: React.FC = () => {
                   type="password" 
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="glass-input pl-10"
+                  className="glass-input !pl-12"
                   placeholder="Repeat your password"
                   required
                 />
