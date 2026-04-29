@@ -141,7 +141,7 @@ router.get('/', auth, getExpensesLimiter, async (req: AuthRequest, res: Response
     }
     breakdownQuery += ' GROUP BY category';
     const breakdownRes = await pool.query(breakdownQuery, breakdownParams);
-    const categoryTotals = breakdownRes.rows.map(b => ({
+    const categoryTotals = breakdownRes.rows.map((b: { category: string, total: string }) => ({
       category: b.category,
       amount: Number((parseInt(b.total, 10) / 100).toFixed(2))
     }));
