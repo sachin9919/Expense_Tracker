@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import expensesRouter from './routes/expenses';
+import authRouter from './routes/auth';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -23,6 +24,7 @@ app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+app.use('/auth', authRouter);
 app.use('/expenses', expensesRouter);
 
 // Global Error Handler

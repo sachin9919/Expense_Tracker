@@ -5,16 +5,17 @@ import { expenseSchema } from '../validators/expense';
 import { getExpensesLimiter, postExpenseLimiter } from '../middleware/rateLimiter';
 import { Expense, PaginatedResponse } from '../types';
 import redis from '../redis';
+import { auth, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
 // Helper to invalidate cache
-const invalidateCache = async () => {
+const invalidateCache = async (userId: string) => {
   if (!redis) return;
   try {
     let cursor = '0';
     do {
-      const result = await redis.scan(cursor, 'MATCH', 'expenses:*', 'COUNT', 100);
+      const result = await redis.scan(cursor, 'MATCH', `expenses:${userId}:*`, 'COUNT', 100);
       cursor = result[0];
       const keys = result[1];
       if (keys.length > 0) {
@@ -26,14 +27,15 @@ const invalidateCache = async () => {
   }
 };
 
-router.post('/', postExpenseLimiter, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', auth, postExpenseLimiter, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    const userId = req.user!.id;
     const validatedData = expenseSchema.parse(req.body);
     const { amount, category, description, date, idempotency_key } = validatedData;
 
     // Check for idempotency key
-    const existingStmt = db.prepare('SELECT * FROM expenses WHERE idempotency_key = ?');
-    const existingExpense = existingStmt.get(idempotency_key) as Expense | undefined;
+    const existingStmt = db.prepare('SELECT * FROM expenses WHERE idempotency_key = ? AND user_id = ?');
+    const existingExpense = existingStmt.get(idempotency_key, userId) as Expense | undefined;
 
     if (existingExpense) {
       res.status(200).json({
@@ -48,17 +50,17 @@ router.post('/', postExpenseLimiter, async (req: Request, res: Response, next: N
     const created_at = new Date().toISOString();
 
     const insertStmt = db.prepare(`
-      INSERT INTO expenses (id, amount, category, description, date, created_at, idempotency_key)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO expenses (id, amount, category, description, date, created_at, idempotency_key, user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    insertStmt.run(id, paiseAmount, category, description, date, created_at, idempotency_key);
+    insertStmt.run(id, paiseAmount, category, description, date, created_at, idempotency_key, userId);
 
     const newExpenseStmt = db.prepare('SELECT * FROM expenses WHERE id = ?');
     const newExpense = newExpenseStmt.get(id) as Expense;
 
     // Invalidate cache in background after successful insert
-    invalidateCache();
+    invalidateCache(userId);
 
     res.status(201).json({
       ...newExpense,
@@ -69,11 +71,12 @@ router.post('/', postExpenseLimiter, async (req: Request, res: Response, next: N
   }
 });
 
-router.get('/', getExpensesLimiter, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', auth, getExpensesLimiter, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    const userId = req.user!.id;
     const { category, sort = 'date_desc', page = '1', limit = '20' } = req.query;
 
-    const cacheKey = `expenses:${category || 'all'}:${sort}:${page}:${limit}`;
+    const cacheKey = `expenses:${userId}:${category || 'all'}:${sort}:${page}:${limit}`;
 
     // Try cache first
     if (redis) {
@@ -96,16 +99,17 @@ router.get('/', getExpensesLimiter, async (req: Request, res: Response, next: Ne
     const limitNum = Math.min(parseInt(limit as string, 10) || 20, 100);
     const offset = (pageNum - 1) * limitNum;
 
-    let baseQuery = 'SELECT * FROM expenses';
-    let countQuery = 'SELECT COUNT(*) as total FROM expenses';
-    let sumQuery = 'SELECT SUM(amount) as totalAmount FROM expenses';
-    const params: any[] = [];
+    // Build user-filtered queries
+    let baseQuery = 'SELECT * FROM expenses WHERE user_id = ?';
+    let countQuery = 'SELECT COUNT(*) as total FROM expenses WHERE user_id = ?';
+    let sumQuery = 'SELECT SUM(amount) as totalAmount FROM expenses WHERE user_id = ?';
+    const queryParams: any[] = [userId];
 
     if (category) {
-      baseQuery += ' WHERE category = ?';
-      countQuery += ' WHERE category = ?';
-      sumQuery += ' WHERE category = ?';
-      params.push(category);
+      baseQuery += ' AND category = ?';
+      countQuery += ' AND category = ?';
+      sumQuery += ' AND category = ?';
+      queryParams.push(category);
     }
 
     if (sort === 'date_asc') {
@@ -115,23 +119,25 @@ router.get('/', getExpensesLimiter, async (req: Request, res: Response, next: Ne
     }
 
     baseQuery += ' LIMIT ? OFFSET ?';
-    const dataParams = [...params, limitNum, offset];
+    const dataParams = [...queryParams, limitNum, offset];
 
     const expenses = db.prepare(baseQuery).all(...dataParams) as Expense[];
-    const totalRow = db.prepare(countQuery).get(...params) as { total: number };
+    const totalRow = db.prepare(countQuery).get(...queryParams) as { total: number };
     const total = totalRow.total;
     
-    const sumRow = db.prepare(sumQuery).get(...params) as { totalAmount: number | null };
+    const sumRow = db.prepare(sumQuery).get(...queryParams) as { totalAmount: number | null };
     const totalAmountPaise = sumRow.totalAmount || 0;
     const totalAmountRupees = Number((totalAmountPaise / 100).toFixed(2));
 
-    // Category Breakdown Query
-    let breakdownQuery = 'SELECT category, SUM(amount) as total FROM expenses';
+    // Category Breakdown Query (User-specific)
+    let breakdownQuery = 'SELECT category, SUM(amount) as total FROM expenses WHERE user_id = ?';
+    const breakdownParams = [userId];
     if (category) {
-      breakdownQuery += ' WHERE category = ?';
+      breakdownQuery += ' AND category = ?';
+      breakdownParams.push(category as string);
     }
     breakdownQuery += ' GROUP BY category';
-    const breakdown = db.prepare(breakdownQuery).all(...params) as { category: string, total: number }[];
+    const breakdown = db.prepare(breakdownQuery).all(...breakdownParams) as { category: string, total: number }[];
     const categoryTotals = breakdown.map(b => ({
       category: b.category,
       amount: Number((b.total / 100).toFixed(2))
