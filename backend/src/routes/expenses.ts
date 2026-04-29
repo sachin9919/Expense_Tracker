@@ -3,11 +3,30 @@ import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
 import { expenseSchema } from '../validators/expense';
 import { getExpensesLimiter, postExpenseLimiter } from '../middleware/rateLimiter';
-import { Expense } from '../types';
+import { Expense, PaginatedResponse } from '../types';
+import redis from '../redis';
 
 const router = Router();
 
-router.post('/', postExpenseLimiter, (req: Request, res: Response, next: NextFunction) => {
+// Helper to invalidate cache
+const invalidateCache = async () => {
+  if (!redis) return;
+  try {
+    let cursor = '0';
+    do {
+      const result = await redis.scan(cursor, 'MATCH', 'expenses:*', 'COUNT', 100);
+      cursor = result[0];
+      const keys = result[1];
+      if (keys.length > 0) {
+        await redis.del(...keys);
+      }
+    } while (cursor !== '0');
+  } catch (error) {
+    console.error('Failed to invalidate Redis cache:', error);
+  }
+};
+
+router.post('/', postExpenseLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const validatedData = expenseSchema.parse(req.body);
     const { amount, category, description, date, idempotency_key } = validatedData;
@@ -17,10 +36,9 @@ router.post('/', postExpenseLimiter, (req: Request, res: Response, next: NextFun
     const existingExpense = existingStmt.get(idempotency_key) as Expense | undefined;
 
     if (existingExpense) {
-      // Return the existing record with 200 OK
       res.status(200).json({
         ...existingExpense,
-        amount: Number((existingExpense.amount / 100).toFixed(2)) // Convert back to float for response
+        amount: Number((existingExpense.amount / 100).toFixed(2))
       });
       return;
     }
@@ -39,6 +57,9 @@ router.post('/', postExpenseLimiter, (req: Request, res: Response, next: NextFun
     const newExpenseStmt = db.prepare('SELECT * FROM expenses WHERE id = ?');
     const newExpense = newExpenseStmt.get(id) as Expense;
 
+    // Invalidate cache in background after successful insert
+    invalidateCache();
+
     res.status(201).json({
       ...newExpense,
       amount: Number((newExpense.amount / 100).toFixed(2))
@@ -48,12 +69,31 @@ router.post('/', postExpenseLimiter, (req: Request, res: Response, next: NextFun
   }
 });
 
-router.get('/', getExpensesLimiter, (req: Request, res: Response, next: NextFunction) => {
+router.get('/', getExpensesLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { category, sort = 'date_desc', page = '1', limit = '20' } = req.query;
 
+    const cacheKey = `expenses:${category || 'all'}:${sort}:${page}:${limit}`;
+
+    // Try cache first
+    if (redis) {
+      try {
+        const cachedData = await redis.get(cacheKey);
+        if (cachedData) {
+          res.setHeader('X-Cache', 'HIT');
+          res.status(200).json(JSON.parse(cachedData));
+          return;
+        }
+      } catch (cacheErr) {
+        console.error('Redis GET error:', cacheErr);
+        // Fall through to DB on cache error
+      }
+    }
+
+    res.setHeader('X-Cache', 'MISS');
+
     const pageNum = parseInt(page as string, 10) || 1;
-    const limitNum = Math.min(parseInt(limit as string, 10) || 20, 100); // max 100
+    const limitNum = Math.min(parseInt(limit as string, 10) || 20, 100);
     const offset = (pageNum - 1) * limitNum;
 
     let baseQuery = 'SELECT * FROM expenses';
@@ -71,7 +111,6 @@ router.get('/', getExpensesLimiter, (req: Request, res: Response, next: NextFunc
     if (sort === 'date_asc') {
       baseQuery += ' ORDER BY date ASC, created_at ASC';
     } else {
-      // default is date_desc
       baseQuery += ' ORDER BY date DESC, created_at DESC';
     }
 
@@ -93,7 +132,7 @@ router.get('/', getExpensesLimiter, (req: Request, res: Response, next: NextFunc
       amount: Number((exp.amount / 100).toFixed(2))
     }));
 
-    res.status(200).json({
+    const responseData: PaginatedResponse<any> = {
       data: formattedExpenses,
       pagination: {
         page: pageNum,
@@ -104,7 +143,18 @@ router.get('/', getExpensesLimiter, (req: Request, res: Response, next: NextFunc
       meta: {
         totalAmount: totalAmountRupees
       }
-    });
+    };
+
+    // Store in cache
+    if (redis) {
+      try {
+        await redis.set(cacheKey, JSON.stringify(responseData), 'EX', 30);
+      } catch (cacheErr) {
+        console.error('Redis SET error:', cacheErr);
+      }
+    }
+
+    res.status(200).json(responseData);
   } catch (error) {
     next(error);
   }
