@@ -1,55 +1,100 @@
-# Expense Tracker
+# 💰 ExpenseTracker - Industrial Strength SaaS
 
-A production-grade, industrial-strength expense tracker with a glassmorphism UI.
+A premium, full-stack expense management application built with **React 19**, **Vite 8**, **Tailwind CSS 4**, and **Node.js**. This project is designed for high performance, security, and financial accuracy.
 
-## Features
-- **Frontend**: React + Vite + Tailwind CSS (v4) with dark glassmorphism theme.
-- **Backend**: Node.js + Express + TypeScript.
-- **Database**: SQLite (better-sqlite3) for persistence.
-- **Caching**: Redis (ioredis) for high-performance GET requests.
-- **Idempotency**: UUID-based idempotency keys for resilient POST requests.
-- **Rate Limiting**: Protection against API abuse.
+## 🚀 Live Demo
+- **Frontend**: [https://expense-tracker-nu-hazel.vercel.app](https://expense-tracker-nu-hazel.vercel.app)
+- **Backend API**: [https://expense-tracker-backend-v5s1.onrender.com](https://expense-tracker-backend-v5s1.onrender.com)
 
-## Local Development
+---
 
-### Prerequisites
-- Node.js (v18+)
-- Redis server (local or Upstash)
+## ✨ Key Features
 
-### Setup
-1. Clone the repository.
-2. Install dependencies:
-   ```bash
-   # Backend
-   cd backend && npm install
-   # Frontend
-   cd ../frontend && npm install
-   ```
-3. Set up environment variables (copy `.env.example` to `.env` in both folders).
-4. Start development:
-   ```bash
-   # Backend
-   cd backend && npm run dev
-   # Frontend
-   cd ../frontend && npm run dev
-   ```
+### 🔐 User Management & Security
+- **JWT Authentication**: Secure signup and login workflows.
+- **Private Data Isolation**: Each user manages their own independent expense data.
+- **Protected Routes**: Frontend routing ensures only logged-in users access the dashboard.
+- **Bcrypt Hashing**: Industry-standard password security.
 
-## Deployment
+### 🎨 Premium Aesthetics
+- **Glassmorphism UI**: Stunning frosted glass effects with dynamic blurs.
+- **Animated Backgrounds**: Smooth gradient mesh background for a premium feel.
+- **Responsive Design**: Optimized for everything from mobile phones to ultra-wide monitors.
+- **Global Toast System**: Real-time feedback for all user actions.
 
-### Backend (Render.com)
-1. Push this repo to GitHub.
-2. Create a new **Web Service** on Render.
-3. Select your repository.
-4. Render will automatically detect the `render.yaml` file.
-5. Provide the following environment variables in the Render dashboard:
-   - `REDIS_URL`: Your Upstash Redis connection string.
-   - `FRONTEND_URL`: The URL where your frontend is deployed (e.g., `https://your-app.vercel.app`).
-6. Ensure the disk is mounted at `/data` (handled by `render.yaml`).
+### ⚙️ High-Performance Architecture
+- **PostgreSQL Persistence**: Managed database on Render for reliable data storage.
+- **Redis Caching**: Support for ultra-fast data retrieval via ioredis.
+- **Idempotency Control**: UUID-based tracking prevents duplicate submissions.
+- **Rate Limiting**: Built-in protection against API abuse and brute-force attacks.
+
+### 📊 Financial Insights
+- **Integer Precision**: All calculations are performed in "paise" to avoid JavaScript floating-point errors.
+- **Category Breakdown**: Real-time summary charts and spending analysis.
+- **Advanced Filtering**: Sort by date and filter by category (Food, Health, Transport, etc.).
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend
+- **Framework**: React 19 + Vite 8
+- **Styling**: Tailwind CSS 4
+- **State Management**: TanStack Query (React Query)
+- **Routing**: React Router 7
+- **Icons**: Lucide React
+
+### Backend
+- **Runtime**: Node.js + Express
+- **Database**: PostgreSQL (pg)
+- **Caching**: Redis (ioredis)
+- **Security**: Helmet, Express Rate Limit, JWT, Bcrypt
+
+---
+
+## 💻 Local Development
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/sachin9919/Expense_Tracker.git
+cd Expense_Tracker
+```
+
+### 2. Setup Backend
+```bash
+cd backend
+npm install
+# Create a .env file with:
+# DATABASE_URL=your_postgres_connection_string
+# JWT_SECRET=your_secret
+# REDIS_URL=your_redis_url (optional)
+npm run dev
+```
+
+### 3. Setup Frontend
+```bash
+cd ../frontend
+npm install
+# Create a .env file with:
+# VITE_API_URL=http://localhost:3000
+npm run dev
+```
+
+---
+
+## 🌍 Deployment
+
+### Backend (Render)
+1. Use the included `render.yaml` Blueprint.
+2. Connect your GitHub repo.
+3. Render will automatically provision a PostgreSQL database and a Web Service.
 
 ### Frontend (Vercel)
-1. Push this repo to GitHub.
-2. Import the project into Vercel.
-3. Set the **Root Directory** to `frontend`.
-4. Add the environment variable:
-   - `VITE_API_URL`: Your backend URL (e.g., `https://your-api.onrender.com`).
-5. Deploy!
+1. Import the repository to Vercel.
+2. Set the root directory to `frontend`.
+3. Add the `VITE_API_URL` environment variable.
+
+---
+
+## 📄 License
+This project is licensed under the MIT License.
