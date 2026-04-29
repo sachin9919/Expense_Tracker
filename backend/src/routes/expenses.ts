@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import db from '../db';
+import pool from '../db';
 import { expenseSchema } from '../validators/expense';
 import { getExpensesLimiter, postExpenseLimiter } from '../middleware/rateLimiter';
 import { Expense, PaginatedResponse } from '../types';
@@ -34,8 +34,11 @@ router.post('/', auth, postExpenseLimiter, async (req: AuthRequest, res: Respons
     const { amount, category, description, date, idempotency_key } = validatedData;
 
     // Check for idempotency key
-    const existingStmt = db.prepare('SELECT * FROM expenses WHERE idempotency_key = ? AND user_id = ?');
-    const existingExpense = existingStmt.get(idempotency_key, userId) as Expense | undefined;
+    const existingRes = await pool.query(
+      'SELECT * FROM expenses WHERE idempotency_key = $1 AND user_id = $2', 
+      [idempotency_key, userId]
+    );
+    const existingExpense = existingRes.rows[0] as Expense | undefined;
 
     if (existingExpense) {
       res.status(200).json({
@@ -49,15 +52,13 @@ router.post('/', auth, postExpenseLimiter, async (req: AuthRequest, res: Respons
     const paiseAmount = Math.round(amount * 100);
     const created_at = new Date().toISOString();
 
-    const insertStmt = db.prepare(`
+    await pool.query(`
       INSERT INTO expenses (id, amount, category, description, date, created_at, idempotency_key, user_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [id, paiseAmount, category, description, date, created_at, idempotency_key, userId]);
 
-    insertStmt.run(id, paiseAmount, category, description, date, created_at, idempotency_key, userId);
-
-    const newExpenseStmt = db.prepare('SELECT * FROM expenses WHERE id = ?');
-    const newExpense = newExpenseStmt.get(id) as Expense;
+    const newExpenseRes = await pool.query('SELECT * FROM expenses WHERE id = $1', [id]);
+    const newExpense = newExpenseRes.rows[0] as Expense;
 
     // Invalidate cache in background after successful insert
     invalidateCache(userId);
@@ -100,15 +101,15 @@ router.get('/', auth, getExpensesLimiter, async (req: AuthRequest, res: Response
     const offset = (pageNum - 1) * limitNum;
 
     // Build user-filtered queries
-    let baseQuery = 'SELECT * FROM expenses WHERE user_id = ?';
-    let countQuery = 'SELECT COUNT(*) as total FROM expenses WHERE user_id = ?';
-    let sumQuery = 'SELECT SUM(amount) as totalAmount FROM expenses WHERE user_id = ?';
+    let baseQuery = 'SELECT * FROM expenses WHERE user_id = $1';
+    let countQuery = 'SELECT COUNT(*) as total FROM expenses WHERE user_id = $1';
+    let sumQuery = 'SELECT SUM(amount) as total_amount FROM expenses WHERE user_id = $1';
     const queryParams: any[] = [userId];
 
     if (category) {
-      baseQuery += ' AND category = ?';
-      countQuery += ' AND category = ?';
-      sumQuery += ' AND category = ?';
+      baseQuery += ` AND category = $${queryParams.length + 1}`;
+      countQuery += ` AND category = $${queryParams.length + 1}`;
+      sumQuery += ` AND category = $${queryParams.length + 1}`;
       queryParams.push(category);
     }
 
@@ -118,29 +119,31 @@ router.get('/', auth, getExpensesLimiter, async (req: AuthRequest, res: Response
       baseQuery += ' ORDER BY date DESC, created_at DESC';
     }
 
-    baseQuery += ' LIMIT ? OFFSET ?';
+    baseQuery += ` LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`;
     const dataParams = [...queryParams, limitNum, offset];
 
-    const expenses = db.prepare(baseQuery).all(...dataParams) as Expense[];
-    const totalRow = db.prepare(countQuery).get(...queryParams) as { total: number };
-    const total = totalRow.total;
+    const expensesRes = await pool.query(baseQuery, dataParams);
+    const expenses = expensesRes.rows as Expense[];
+
+    const totalRes = await pool.query(countQuery, queryParams);
+    const total = parseInt(totalRes.rows[0].total, 10);
     
-    const sumRow = db.prepare(sumQuery).get(...queryParams) as { totalAmount: number | null };
-    const totalAmountPaise = sumRow.totalAmount || 0;
+    const sumRes = await pool.query(sumQuery, queryParams);
+    const totalAmountPaise = parseInt(sumRes.rows[0].total_amount || '0', 10);
     const totalAmountRupees = Number((totalAmountPaise / 100).toFixed(2));
 
     // Category Breakdown Query (User-specific)
-    let breakdownQuery = 'SELECT category, SUM(amount) as total FROM expenses WHERE user_id = ?';
+    let breakdownQuery = 'SELECT category, SUM(amount) as total FROM expenses WHERE user_id = $1';
     const breakdownParams = [userId];
     if (category) {
-      breakdownQuery += ' AND category = ?';
+      breakdownQuery += ' AND category = $2';
       breakdownParams.push(category as string);
     }
     breakdownQuery += ' GROUP BY category';
-    const breakdown = db.prepare(breakdownQuery).all(...breakdownParams) as { category: string, total: number }[];
-    const categoryTotals = breakdown.map(b => ({
+    const breakdownRes = await pool.query(breakdownQuery, breakdownParams);
+    const categoryTotals = breakdownRes.rows.map(b => ({
       category: b.category,
-      amount: Number((b.total / 100).toFixed(2))
+      amount: Number((parseInt(b.total, 10) / 100).toFixed(2))
     }));
 
     const totalPages = Math.ceil(total / limitNum);

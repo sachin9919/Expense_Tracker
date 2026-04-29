@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import db from '../db';
+import pool from '../db';
 import { signupSchema, loginSchema } from '../validators/user';
 import { User } from '../types';
 
@@ -15,8 +15,8 @@ router.post('/signup', async (req: Request, res: Response, next: NextFunction) =
     const { email, password } = validatedData;
 
     // Check if user exists
-    const existingUser = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (existingUser) {
+    const existingUserRes = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (existingUserRes.rows.length > 0) {
       res.status(400).json({ error: 'Email already in use' });
       return;
     }
@@ -25,11 +25,9 @@ router.post('/signup', async (req: Request, res: Response, next: NextFunction) =
     const password_hash = await bcrypt.hash(password, 12);
     const created_at = new Date().toISOString();
 
-    db.prepare('INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)').run(
-      id,
-      email,
-      password_hash,
-      created_at
+    await pool.query(
+      'INSERT INTO users (id, email, password_hash, created_at) VALUES ($1, $2, $3, $4)',
+      [id, email, password_hash, created_at]
     );
 
     const token = jwt.sign({ id, email }, JWT_SECRET, { expiresIn: '7d' });
@@ -48,7 +46,9 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     const validatedData = loginSchema.parse(req.body);
     const { email, password } = validatedData;
 
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as User | undefined;
+    const userRes = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const user = userRes.rows[0] as User | undefined;
+
     if (!user) {
       res.status(401).json({ error: 'Invalid email or password' });
       return;
