@@ -20,6 +20,7 @@ export interface PaginatedResponse<T> {
   pagination: PaginationMeta;
   meta: {
     totalAmount: number;
+    categoryTotals: { category: string; amount: number }[];
   };
 }
 

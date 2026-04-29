@@ -125,6 +125,18 @@ router.get('/', getExpensesLimiter, async (req: Request, res: Response, next: Ne
     const totalAmountPaise = sumRow.totalAmount || 0;
     const totalAmountRupees = Number((totalAmountPaise / 100).toFixed(2));
 
+    // Category Breakdown Query
+    let breakdownQuery = 'SELECT category, SUM(amount) as total FROM expenses';
+    if (category) {
+      breakdownQuery += ' WHERE category = ?';
+    }
+    breakdownQuery += ' GROUP BY category';
+    const breakdown = db.prepare(breakdownQuery).all(...params) as { category: string, total: number }[];
+    const categoryTotals = breakdown.map(b => ({
+      category: b.category,
+      amount: Number((b.total / 100).toFixed(2))
+    }));
+
     const totalPages = Math.ceil(total / limitNum);
 
     const formattedExpenses = expenses.map(exp => ({
@@ -141,7 +153,8 @@ router.get('/', getExpensesLimiter, async (req: Request, res: Response, next: Ne
         totalPages
       },
       meta: {
-        totalAmount: totalAmountRupees
+        totalAmount: totalAmountRupees,
+        categoryTotals
       }
     };
 

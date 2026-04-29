@@ -84,7 +84,10 @@ function App() {
             />
           )}
 
-          <SummaryCard totalAmount={data?.meta?.totalAmount || 0} />
+          <SummaryCard 
+            totalAmount={data?.meta?.totalAmount || 0} 
+            categoryTotals={data?.meta?.categoryTotals || []}
+          />
         </main>
       </div>
     </div>

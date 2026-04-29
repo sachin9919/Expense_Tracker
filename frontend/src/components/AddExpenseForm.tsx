@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
 import { PlusCircle, Loader2 } from 'lucide-react';
 import { useCreateExpenseMutation } from '../hooks/useExpenses';
+import { useToast } from '../context/ToastContext';
 import type { ExpensePayload } from '../types';
 
 const CATEGORIES = ["Food", "Transport", "Shopping", "Health", "Other"];
@@ -15,7 +16,7 @@ export const AddExpenseForm: React.FC = () => {
   const [idempotencyKey, setIdempotencyKey] = useState<string>('');
   
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const { showToast } = useToast();
 
   const { mutateAsync, isPending } = useCreateExpenseMutation();
 
@@ -23,14 +24,6 @@ export const AddExpenseForm: React.FC = () => {
   useEffect(() => {
     setIdempotencyKey(uuidv4());
   }, []);
-
-  // Clear toast after 3 seconds
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -62,7 +55,7 @@ export const AddExpenseForm: React.FC = () => {
 
       await mutateAsync(payload);
       
-      setToast({ message: 'Expense added successfully!', type: 'success' });
+      showToast('Expense added successfully!', 'success');
       
       // Reset form on success
       setAmount('');
@@ -75,10 +68,7 @@ export const AddExpenseForm: React.FC = () => {
       
     } catch (error: any) {
       console.error(error);
-      setToast({ 
-        message: error.response?.data?.error || 'Failed to add expense', 
-        type: 'error' 
-      });
+      showToast(error.response?.data?.error || 'Failed to add expense', 'error');
     }
   };
 
@@ -156,17 +146,6 @@ export const AddExpenseForm: React.FC = () => {
           </button>
         </div>
       </form>
-
-      {/* Inline Toast */}
-      {toast && (
-        <div className={`absolute top-4 right-4 px-4 py-2 rounded-lg border backdrop-blur-md animate-fade-slide ${
-          toast.type === 'success' 
-            ? 'bg-success/20 border-success/30 text-success-light' 
-            : 'bg-danger/20 border-danger/30 text-danger-light'
-        }`}>
-          {toast.message}
-        </div>
-      )}
     </div>
   );
 };
